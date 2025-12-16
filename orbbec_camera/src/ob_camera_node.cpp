@@ -1587,7 +1587,7 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
     }
   }
   if (valid_count == 0) {
-    RCLCPP_WARN(logger_, "No valid point in point cloud");
+    RCLCPP_WARN_THROTTLE(logger_, *(node_->get_clock()), 3600000, "No valid point in point cloud");
     return;
   }
   if (!ordered_pc_) {
