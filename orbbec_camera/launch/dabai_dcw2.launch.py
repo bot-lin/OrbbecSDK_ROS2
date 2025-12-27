@@ -59,7 +59,8 @@ def generate_launch_description():
         DeclareLaunchArgument('ir_height', default_value='400'),
         DeclareLaunchArgument('ir_fps', default_value='10'),
         DeclareLaunchArgument('ir_format', default_value='Y10'),
-        DeclareLaunchArgument('enable_ir', default_value='true'),
+        # NOTE: Enable IR stream only if you really need it, to reduce CPU/bandwidth by default.
+        DeclareLaunchArgument('enable_ir', default_value='false'),
         DeclareLaunchArgument('flip_ir', default_value='false'),
         DeclareLaunchArgument('ir_qos', default_value='default'),
         DeclareLaunchArgument('ir_camera_info_qos', default_value='default'),
@@ -72,8 +73,11 @@ def generate_launch_description():
         DeclareLaunchArgument('color_info_url', default_value=''),
         DeclareLaunchArgument('log_level', default_value='none'),
         DeclareLaunchArgument('enable_publish_extrinsic', default_value='false'),
-        DeclareLaunchArgument('enable_soft_filter', default_value='true'),
+        # NOTE: Software depth filter may increase host CPU usage.
+        DeclareLaunchArgument('enable_soft_filter', default_value='false'),
         DeclareLaunchArgument('enable_ldp', default_value='true'),
+        # NOTE: Depth post-process filters can cost CPU; keep noise removal off by default.
+        DeclareLaunchArgument('enable_noise_removal_filter', default_value='false'),
         DeclareLaunchArgument('soft_filter_max_diff', default_value='-1'),
         DeclareLaunchArgument('soft_filter_speckle_size', default_value='-1'),
         DeclareLaunchArgument('ordered_pc', default_value='false'),
@@ -112,6 +116,8 @@ def generate_launch_description():
             name=LaunchConfiguration("camera_name"),
             namespace="",
             parameters=parameters,
+            # Reduce serialization/copy overhead within the component container
+            extra_arguments=[{'use_intra_process_comms': True}],
         )
         # Define the ComposableNodeContainer
         container = ComposableNodeContainer(

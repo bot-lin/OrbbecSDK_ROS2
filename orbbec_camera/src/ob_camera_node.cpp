@@ -1177,6 +1177,12 @@ void OBCameraNode::getParameters() {
   setAndGetNodeParameter<double>(liner_accel_cov_, "linear_accel_cov", 0.0003);
   setAndGetNodeParameter<double>(angular_vel_cov_, "angular_vel_cov", 0.02);
   setAndGetNodeParameter<bool>(ordered_pc_, "ordered_pc", false);
+  setAndGetNodeParameter<int>(point_cloud_stride_, "point_cloud_stride", 1);
+  if (point_cloud_stride_ < 1) {
+    RCLCPP_WARN_STREAM(logger_, "Invalid point_cloud_stride " << point_cloud_stride_
+                                                              << ", clamping to 1");
+    point_cloud_stride_ = 1;
+  }
   setAndGetNodeParameter<int>(max_save_images_count_, "max_save_images_count", 10);
   setAndGetNodeParameter<bool>(enable_depth_scale_, "enable_depth_scale", true);
   setAndGetNodeParameter<std::string>(device_preset_, "device_preset", "");
@@ -1561,13 +1567,36 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
   auto width = depth_frame->width();
   auto height = depth_frame->height();
   auto point_cloud_msg = std::make_unique<sensor_msgs::msg::PointCloud2>();
+  size_t stride = static_cast<size_t>(point_cloud_stride_);
+  if (stride < 1) {
+    stride = 1;
+  }
+  if (ordered_pc_ && stride > 1) {
+    // Ordered point cloud expects width*height layout; subsampling would break this semantic.
+    RCLCPP_WARN_THROTTLE(logger_, *(node_->get_clock()), 60000,
+                        "point_cloud_stride is ignored when ordered_pc is true");
+    stride = 1;
+  }
   sensor_msgs::PointCloud2Modifier modifier(*point_cloud_msg);
   modifier.setPointCloud2FieldsByString(1, "xyz");
-  modifier.resize(width * height);
-  point_cloud_msg->width = depth_frame->width();
-  point_cloud_msg->height = depth_frame->height();
-  point_cloud_msg->row_step = point_cloud_msg->width * point_cloud_msg->point_step;
-  point_cloud_msg->data.resize(point_cloud_msg->height * point_cloud_msg->row_step);
+  if (ordered_pc_) {
+    modifier.resize(width * height);
+    point_cloud_msg->width = depth_frame->width();
+    point_cloud_msg->height = depth_frame->height();
+    point_cloud_msg->row_step = point_cloud_msg->width * point_cloud_msg->point_step;
+    point_cloud_msg->data.resize(point_cloud_msg->height * point_cloud_msg->row_step);
+  } else {
+    // Pre-allocate a smaller buffer when publishing unordered point cloud.
+    size_t reserved = stride > 1 ? (point_size + stride - 1) / stride : point_size;
+    if (reserved == 0) {
+      reserved = 1;
+    }
+    modifier.resize(reserved);
+    point_cloud_msg->width = reserved;
+    point_cloud_msg->height = 1;
+    point_cloud_msg->row_step = point_cloud_msg->width * point_cloud_msg->point_step;
+    point_cloud_msg->data.resize(point_cloud_msg->height * point_cloud_msg->row_step);
+  }
   sensor_msgs::PointCloud2Iterator<float> iter_x(*point_cloud_msg, "x");
   sensor_msgs::PointCloud2Iterator<float> iter_y(*point_cloud_msg, "y");
   sensor_msgs::PointCloud2Iterator<float> iter_z(*point_cloud_msg, "z");
@@ -1576,7 +1605,7 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
   const static float min_depth = MIN_DISTANCE / depth_scale;
   const static float max_depth = MAX_DISTANCE / depth_scale;
   size_t valid_count = 0;
-  for (size_t i = 0; i < point_size; i++) {
+  for (size_t i = 0; i < point_size; i += stride) {
     bool valid_point = points[i].z >= min_depth && points[i].z <= max_depth;
     if (valid_point || ordered_pc_) {
       *iter_x = static_cast<float>(points[i].x / 1000.0);

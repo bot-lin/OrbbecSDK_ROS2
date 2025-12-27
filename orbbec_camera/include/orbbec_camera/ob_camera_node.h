@@ -530,6 +530,9 @@ class OBCameraNode {
   std::condition_variable color_frame_queue_cv_;
 
   bool ordered_pc_ = false;
+  // Subsample point cloud by taking 1 point every N points during conversion (unordered point cloud).
+  // 1 means no subsampling.
+  int point_cloud_stride_ = 1;
   bool enable_depth_scale_ = true;
   std::shared_ptr<ob::Frame> depth_frame_ = nullptr;
   std::string device_preset_ = "Default";
