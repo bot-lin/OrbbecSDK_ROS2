@@ -7,11 +7,13 @@ from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 from launch_ros.actions import Node
 import os
+import yaml
 
 
 def generate_launch_description():
     # Declare arguments
     args = [
+        # YAML parameter file. Loaded first, then overridden by launch arguments below.
         DeclareLaunchArgument('camera_name', default_value='camera'),
         DeclareLaunchArgument('depth_registration', default_value='false'),
         DeclareLaunchArgument('serial_number', default_value=''),
@@ -81,6 +83,9 @@ def generate_launch_description():
         DeclareLaunchArgument('soft_filter_max_diff', default_value='-1'),
         DeclareLaunchArgument('soft_filter_speckle_size', default_value='-1'),
         DeclareLaunchArgument('ordered_pc', default_value='false'),
+        # Subsample point cloud by taking 1 point every N points during conversion (unordered point cloud).
+        # 1 means no subsampling.
+        DeclareLaunchArgument('point_cloud_stride', default_value='1'),
         DeclareLaunchArgument('use_hardware_time', default_value='false'),
         DeclareLaunchArgument('enable_depth_scale', default_value='true'),
         DeclareLaunchArgument('align_mode', default_value='HW'),
@@ -89,8 +94,9 @@ def generate_launch_description():
         DeclareLaunchArgument('industry_mode', default_value=''),
     ]
 
-    # Node configuration
-    parameters = [{arg.name: LaunchConfiguration(arg.name)} for arg in args]
+    with open(os.path.join('/data', 'params', 'dcw2.yaml'), 'r') as f:
+        params = yaml.safe_load(f)["dcw2"]["ros__parameters"]
+
     # get  ROS_DISTRO
     ros_distro = os.environ["ROS_DISTRO"]
     if ros_distro == "foxy":
@@ -102,7 +108,7 @@ def generate_launch_description():
                     executable="orbbec_camera_node",
                     name="ob_camera_node",
                     namespace=LaunchConfiguration("camera_name"),
-                    parameters=parameters,
+                    parameters=[params],
                     output="screen",
                 )
             ]
@@ -115,7 +121,7 @@ def generate_launch_description():
             plugin="orbbec_camera::OBCameraNodeDriver",
             name=LaunchConfiguration("camera_name"),
             namespace="",
-            parameters=parameters,
+            parameters=[params],
             # Reduce serialization/copy overhead within the component container
             extra_arguments=[{'use_intra_process_comms': True}],
         )

@@ -533,6 +533,14 @@ class OBCameraNode {
   // Subsample point cloud by taking 1 point every N points during conversion (unordered point cloud).
   // 1 means no subsampling.
   int point_cloud_stride_ = 1;
+  // Maximum distance (in meters) for points to be kept in point cloud.
+  // <= 0 means no max distance filtering.
+  double point_cloud_max_distance_ = 10.0;
+  // Radius-based outlier suppression for unordered point clouds.
+  // If point_cloud_radius_ > 0 and point_cloud_min_neighbors_ > 1,
+  // points that have fewer than point_cloud_min_neighbors_ neighbors within point_cloud_radius_ are dropped.
+  double point_cloud_radius_ = 0.0;
+  int point_cloud_min_neighbors_ = 1;
   bool enable_depth_scale_ = true;
   std::shared_ptr<ob::Frame> depth_frame_ = nullptr;
   std::string device_preset_ = "Default";
