@@ -21,6 +21,8 @@
     point_cloud_stride: 1
     # Maximum distance (in meters) for points to be kept in point cloud. <= 0 means no filtering.
     point_cloud_max_distance: 4.0
+    # Hard cap of published point cloud size for unordered point cloud. <= 0 means no cap.
+    point_cloud_max_points: 0
     # Radius outlier suppression for unordered point cloud (recommended for "spike" noise):
     # points that have fewer than point_cloud_min_neighbors neighbors within point_cloud_radius will be dropped.
     # set point_cloud_radius <= 0 or point_cloud_min_neighbors <= 1 to disable.

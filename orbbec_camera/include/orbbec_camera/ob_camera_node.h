@@ -536,6 +536,9 @@ class OBCameraNode {
   // Maximum distance (in meters) for points to be kept in point cloud.
   // <= 0 means no max distance filtering.
   double point_cloud_max_distance_ = 10.0;
+  // Hard cap of published point cloud size for unordered point cloud.
+  // <= 0 means no cap.
+  int point_cloud_max_points_ = 0;
   // Radius-based outlier suppression for unordered point clouds.
   // If point_cloud_radius_ > 0 and point_cloud_min_neighbors_ > 1,
   // points that have fewer than point_cloud_min_neighbors_ neighbors within point_cloud_radius_ are dropped.

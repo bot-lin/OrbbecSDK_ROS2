@@ -1182,6 +1182,7 @@ void OBCameraNode::getParameters() {
   setAndGetNodeParameter<bool>(ordered_pc_, "ordered_pc", false);
   setAndGetNodeParameter<int>(point_cloud_stride_, "point_cloud_stride", 1);
   setAndGetNodeParameter<double>(point_cloud_max_distance_, "point_cloud_max_distance", 10.0);
+  setAndGetNodeParameter<int>(point_cloud_max_points_, "point_cloud_max_points", 0);
   setAndGetNodeParameter<double>(point_cloud_radius_, "point_cloud_radius", 0.0);
   setAndGetNodeParameter<int>(point_cloud_min_neighbors_, "point_cloud_min_neighbors", 1);
   if (point_cloud_stride_ < 1) {
@@ -1193,6 +1194,11 @@ void OBCameraNode::getParameters() {
     RCLCPP_WARN_STREAM(logger_, "Invalid point_cloud_max_distance " << point_cloud_max_distance_
                                                                     << ", disabling max distance filter");
     point_cloud_max_distance_ = 0.0;
+  }
+  if (point_cloud_max_points_ < 0) {
+    RCLCPP_WARN_STREAM(logger_, "Invalid point_cloud_max_points " << point_cloud_max_points_
+                                                                  << ", disabling max points cap");
+    point_cloud_max_points_ = 0;
   }
   if (point_cloud_radius_ < 0.0) {
     RCLCPP_WARN_STREAM(logger_, "Invalid point_cloud_radius " << point_cloud_radius_
@@ -1207,6 +1213,8 @@ void OBCameraNode::getParameters() {
   RCLCPP_INFO_STREAM(logger_, "point_cloud_stride: " << point_cloud_stride_
                                                      << ", point_cloud_max_distance(m): "
                                                      << point_cloud_max_distance_
+                                                     << ", point_cloud_max_points: "
+                                                     << point_cloud_max_points_
                                                      << ", point_cloud_radius(m): "
                                                      << point_cloud_radius_
                                                      << ", point_cloud_min_neighbors: "
@@ -1635,7 +1643,7 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
     max_depth = static_cast<float>(max_distance_mm / depth_scale);
   }
   size_t valid_count = 0;
-  // size_t candidate_count = 0;
+  size_t candidate_count = 0;
   // Optional outlier suppression (unordered point cloud only)
   const bool enable_radius_filter = (!ordered_pc_) && point_cloud_radius_ > 0.0 &&
                                     point_cloud_min_neighbors_ > 1;
@@ -1684,7 +1692,16 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
       tmp.push_back(TmpPoint{x, y, z, key});
       voxel_bins[key].push_back(idx);
     }
-    // candidate_count = tmp.size();
+    candidate_count = tmp.size();
+    size_t keep_every = 1;
+    if (point_cloud_max_points_ > 0 && candidate_count > static_cast<size_t>(point_cloud_max_points_)) {
+      keep_every =
+          (candidate_count + static_cast<size_t>(point_cloud_max_points_) - 1) /
+          static_cast<size_t>(point_cloud_max_points_);
+      if (keep_every < 1) {
+        keep_every = 1;
+      }
+    }
 
     modifier.resize(tmp.size());
     point_cloud_msg->width = tmp.size();
@@ -1695,6 +1712,7 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
     sensor_msgs::PointCloud2Iterator<float> iter_y(*point_cloud_msg, "y");
     sensor_msgs::PointCloud2Iterator<float> iter_z(*point_cloud_msg, "z");
 
+    size_t emitted = 0;
     for (const auto &p : tmp) {
       int neighbors = 0;
       for (int dx = -1; dx <= 1; ++dx) {
@@ -1733,33 +1751,51 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
       if (neighbors < point_cloud_min_neighbors_) {
         continue;
       }
+      // Hard cap of output size: keep 1 point every keep_every accepted points
+      if (keep_every > 1 && (emitted % keep_every) != 0) {
+        emitted++;
+        continue;
+      }
       *iter_x = p.x;
       *iter_y = p.y;
       *iter_z = p.z;
       ++iter_x, ++iter_y, ++iter_z;
       valid_count++;
+      emitted++;
     }
   } else {
     sensor_msgs::PointCloud2Iterator<float> iter_x(*point_cloud_msg, "x");
     sensor_msgs::PointCloud2Iterator<float> iter_y(*point_cloud_msg, "y");
     sensor_msgs::PointCloud2Iterator<float> iter_z(*point_cloud_msg, "z");
-    // candidate_count = stride > 1 ? (point_size + stride - 1) / stride : point_size;
+    candidate_count = stride > 1 ? (point_size + stride - 1) / stride : point_size;
+    size_t keep_every = 1;
+    if (!ordered_pc_ && point_cloud_max_points_ > 0 &&
+        candidate_count > static_cast<size_t>(point_cloud_max_points_)) {
+      keep_every =
+          (candidate_count + static_cast<size_t>(point_cloud_max_points_) - 1) /
+          static_cast<size_t>(point_cloud_max_points_);
+      if (keep_every < 1) {
+        keep_every = 1;
+      }
+    }
+    size_t emitted = 0;
     for (size_t i = 0; i < point_size; i += stride) {
       bool valid_point = points[i].z >= min_depth && points[i].z <= max_depth;
       if (valid_point || ordered_pc_) {
+        if (!ordered_pc_ && keep_every > 1 && (emitted % keep_every) != 0) {
+          emitted++;
+          continue;
+        }
         *iter_x = static_cast<float>(points[i].x / 1000.0);
         *iter_y = static_cast<float>(points[i].y / 1000.0);
         *iter_z = static_cast<float>(points[i].z / 1000.0);
         ++iter_x, ++iter_y, ++iter_z;
         valid_count++;
+        emitted++;
       }
     }
   }
-  // RCLCPP_INFO_THROTTLE(logger_, *(node_->get_clock()), 5000,
-  //                      "PointCloud filter: ordered=%s stride=%zu max_dist(m)=%.3f radius=%.3f/%d enabled=%s candidates=%zu published=%zu",
-  //                      ordered_pc_ ? "true" : "false", stride, point_cloud_max_distance_,
-  //                      point_cloud_radius_, point_cloud_min_neighbors_,
-  //                      enable_radius_filter ? "true" : "false", candidate_count, valid_count);
+  // (user disabled throttle log)
   if (valid_count == 0) {
     RCLCPP_WARN_THROTTLE(logger_, *(node_->get_clock()), 3600000, "No valid point in point cloud");
     return;
@@ -1887,9 +1923,26 @@ void OBCameraNode::publishColoredPointCloud(const std::shared_ptr<ob::FrameSet> 
     const double max_distance_mm = point_cloud_max_distance_ * 1000.0;
     max_depth = static_cast<float>(max_distance_mm / depth_scale);
   }
+  // Hard cap of output size for unordered colored point cloud
+  const size_t candidate_count = static_cast<size_t>(color_width) * static_cast<size_t>(color_height);
+  size_t keep_every = 1;
+  if (!ordered_pc_ && point_cloud_max_points_ > 0 &&
+      candidate_count > static_cast<size_t>(point_cloud_max_points_)) {
+    keep_every =
+        (candidate_count + static_cast<size_t>(point_cloud_max_points_) - 1) /
+        static_cast<size_t>(point_cloud_max_points_);
+    if (keep_every < 1) {
+      keep_every = 1;
+    }
+  }
+  size_t emitted = 0;
   for (size_t i = 0; i < color_width * color_height; i++) {
     bool valid_point = point_cloud[i].z >= min_depth && point_cloud[i].z <= max_depth;
     if (valid_point || ordered_pc_) {
+      if (!ordered_pc_ && keep_every > 1 && (emitted % keep_every) != 0) {
+        emitted++;
+        continue;
+      }
       *iter_x = static_cast<float>(point_cloud[i].x / 1000.0);
       *iter_y = static_cast<float>(point_cloud[i].y / 1000.0);
       *iter_z = static_cast<float>(point_cloud[i].z / 1000.0);
@@ -1898,6 +1951,7 @@ void OBCameraNode::publishColoredPointCloud(const std::shared_ptr<ob::FrameSet> 
       *iter_b = static_cast<uint8_t>(point_cloud[i].b);
       ++iter_x, ++iter_y, ++iter_z, ++iter_r, ++iter_g, ++iter_b;
       ++valid_count;
+      emitted++;
     }
   }
   if (valid_count == 0) {
