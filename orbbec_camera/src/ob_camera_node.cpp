@@ -1798,6 +1798,31 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
   // (user disabled throttle log)
   if (valid_count == 0) {
     RCLCPP_WARN_THROTTLE(logger_, *(node_->get_clock()), 3600000, "No valid point in point cloud");
+    // Publish an empty point cloud frame (keeps timing/heartbeat for downstream consumers).
+    if (!ordered_pc_) {
+      point_cloud_msg->is_dense = true;
+      point_cloud_msg->width = 0;
+      point_cloud_msg->height = 1;
+      modifier.resize(0);
+      point_cloud_msg->row_step = 0;
+      point_cloud_msg->data.clear();
+    } else {
+      point_cloud_msg->is_dense = true;
+      point_cloud_msg->width = 0;
+      point_cloud_msg->height = 1;
+      modifier.resize(0);
+      point_cloud_msg->row_step = 0;
+      point_cloud_msg->data.clear();
+    }
+    auto frame_timestamp = getFrameTimestampUs(depth_frame);
+    auto timestamp = fromUsToROSTime(frame_timestamp);
+    std::string frame_id = depth_registration_ ? optical_frame_id_[COLOR] : optical_frame_id_[DEPTH];
+    if (!cloud_frame_id_.empty()) {
+      frame_id = cloud_frame_id_;
+    }
+    point_cloud_msg->header.stamp = timestamp;
+    point_cloud_msg->header.frame_id = frame_id;
+    depth_cloud_pub_->publish(std::move(point_cloud_msg));
     return;
   }
   if (!ordered_pc_) {
@@ -1955,7 +1980,32 @@ void OBCameraNode::publishColoredPointCloud(const std::shared_ptr<ob::FrameSet> 
     }
   }
   if (valid_count == 0) {
-    RCLCPP_WARN(logger_, "No valid points in point cloud");
+    RCLCPP_WARN_THROTTLE(logger_, *(node_->get_clock()), 3600000, "No valid points in point cloud");
+    // Publish an empty point cloud frame (keeps timing/heartbeat for downstream consumers).
+    if (!ordered_pc_) {
+      point_cloud_msg->is_dense = true;
+      point_cloud_msg->width = 0;
+      point_cloud_msg->height = 1;
+      modifier.resize(0);
+      point_cloud_msg->row_step = 0;
+      point_cloud_msg->data.clear();
+    } else {
+      point_cloud_msg->is_dense = true;
+      point_cloud_msg->width = 0;
+      point_cloud_msg->height = 1;
+      modifier.resize(0);
+      point_cloud_msg->row_step = 0;
+      point_cloud_msg->data.clear();
+    }
+    auto frame_timestamp = getFrameTimestampUs(depth_frame);
+    std::string frame_id = optical_frame_id_[COLOR];
+    if (!cloud_frame_id_.empty()) {
+      frame_id = cloud_frame_id_;
+    }
+    auto timestamp = fromUsToROSTime(frame_timestamp);
+    point_cloud_msg->header.stamp = timestamp;
+    point_cloud_msg->header.frame_id = frame_id;
+    depth_registration_cloud_pub_->publish(std::move(point_cloud_msg));
     return;
   }
   if (!ordered_pc_) {
