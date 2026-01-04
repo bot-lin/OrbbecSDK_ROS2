@@ -1117,12 +1117,31 @@ void OBCameraNode::getParameters() {
   setAndGetNodeParameter(publish_tf_, "publish_tf", true);
   setAndGetNodeParameter(tf_publish_rate_, "tf_publish_rate", 0.0);
   setAndGetNodeParameter(depth_registration_, "depth_registration", false);
-  setAndGetNodeParameter(enable_point_cloud_, "enable_point_cloud", false);
+  // QoS is needed if point cloud publishing is enabled at runtime (we may need to create publishers).
+  setAndGetNodeParameter<std::string>(point_cloud_qos_, "point_cloud_qos", "default");
+  // enable_point_cloud: allow runtime toggle (ros2 param set ...)
+  parameters_->setParamT<bool>(
+      "enable_point_cloud", rclcpp::ParameterValue(false), enable_point_cloud_,
+      [this](const rclcpp::Parameter &) {
+        // When turning ON at runtime, create publisher if it doesn't exist yet.
+        // When turning OFF, we keep publisher alive and simply stop publishing to avoid races.
+        if (enable_point_cloud_) {
+          std::lock_guard<decltype(point_cloud_mutex_)> lk(point_cloud_mutex_);
+          if (!depth_cloud_pub_) {
+            using PointCloud2 = sensor_msgs::msg::PointCloud2;
+            auto qos_profile = getRMWQosProfileFromString(point_cloud_qos_);
+            if (use_intra_process_) {
+              qos_profile = rmw_qos_profile_default;
+            }
+            depth_cloud_pub_ = node_->create_publisher<PointCloud2>(
+                "depth/points",
+                rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(qos_profile), qos_profile));
+          }
+        }
+      });
   setAndGetNodeParameter<std::string>(ir_info_url_, "ir_info_url", "");
   setAndGetNodeParameter<std::string>(color_info_url_, "color_info_url", "");
   setAndGetNodeParameter(enable_colored_point_cloud_, "enable_colored_point_cloud", false);
-  setAndGetNodeParameter(enable_point_cloud_, "enable_point_cloud", false);
-  setAndGetNodeParameter<std::string>(point_cloud_qos_, "point_cloud_qos", "default");
   setAndGetNodeParameter(enable_d2c_viewer_, "enable_d2c_viewer", false);
   setAndGetNodeParameter(enable_hardware_d2d_, "enable_hardware_d2d", true);
   setAndGetNodeParameter(enable_soft_filter_, "enable_soft_filter", false);
