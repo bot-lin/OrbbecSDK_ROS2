@@ -1,10 +1,10 @@
-/**:
+dcw2_1:
   ros__parameters:
     # Device selection
-    camera_name: camera
+    camera_name: camera_1
     depth_registration: false
     serial_number: ""
-    usb_port: ""
+    usb_port: "5-1.4.1"
     device_num: 1
     vendor_id: "0x2bc5"
     product_id: ""
@@ -18,16 +18,15 @@
     ordered_pc: false
     # Subsample point cloud by taking 1 point every N points during conversion (unordered point cloud).
     # 1 means no subsampling.
-    point_cloud_stride: 1
-    # Maximum distance (in meters) for points to be kept in point cloud. <= 0 means no filtering.
+    point_cloud_stride: 15
     point_cloud_max_distance: 4.0
-    # Hard cap of published point cloud size for unordered point cloud. <= 0 means no cap.
-    point_cloud_max_points: 0
-    # Radius outlier suppression for unordered point cloud (recommended for "spike" noise):
-    # points that have fewer than point_cloud_min_neighbors neighbors within point_cloud_radius will be dropped.
-    # set point_cloud_radius <= 0 or point_cloud_min_neighbors <= 1 to disable.
-    point_cloud_radius: 0.0
-    point_cloud_min_neighbors: 1
+    # Voxel outlier suppression for unordered point cloud:
+    # keep points only in voxels that have at least point_cloud_voxel_min_points points.
+    # set point_cloud_voxel_size <= 0 or point_cloud_voxel_min_points <= 1 to disable.
+    point_cloud_radius: 0.1
+    point_cloud_min_neighbors: 20
+    point_cloud_max_points: 2000
+
 
     # Color stream
     enable_color: true
@@ -110,5 +109,118 @@
     laser_energy_level: -1
     enable_heartbeat: false
     industry_mode: ""
+
+dcw2_2:
+  ros__parameters:
+    # Device selection
+    camera_name: camera_2
+    depth_registration: false
+    serial_number: ""
+    usb_port: "5-1.3.1"
+    device_num: 1
+    vendor_id: "0x2bc5"
+    product_id: ""
+    connection_delay: 100
+
+    # Point cloud
+    enable_point_cloud: true
+    enable_colored_point_cloud: false
+    cloud_frame_id: ""
+    point_cloud_qos: default
+    ordered_pc: false
+    # Subsample point cloud by taking 1 point every N points during conversion (unordered point cloud).
+    # 1 means no subsampling.
+    point_cloud_stride: 15
+    point_cloud_max_distance: 4.0
+    # Voxel outlier suppression for unordered point cloud:
+    # keep points only in voxels that have at least point_cloud_voxel_min_points points.
+    # set point_cloud_voxel_size <= 0 or point_cloud_voxel_min_points <= 1 to disable.
+    point_cloud_radius: 0.1
+    point_cloud_min_neighbors: 20
+    point_cloud_max_points: 2000
+
+
+    # Color stream
+    enable_color: true
+    color_width: 640
+    color_height: 480
+    color_fps: 10
+    color_format: MJPG
+    flip_color: false
+    color_qos: default
+    color_camera_info_qos: default
+    enable_color_auto_exposure: true
+    enable_color_auto_exposure_priority: false
+    color_exposure: -1
+    color_gain: -1
+    enable_color_auto_white_balance: true
+    color_white_balance: -1
+    color_ae_max_exposure: -1
+    color_brightness: -1
+    color_sharpness: -1
+    color_saturation: -1
+    color_contrast: -1
+    color_gamma: -1
+    color_hue: -1
+
+    # Depth stream
+    enable_depth: true
+    depth_width: 640
+    depth_height: 400
+    depth_fps: 10
+    depth_format: Y11
+    flip_depth: false
+    depth_qos: default
+    depth_camera_info_qos: default
+
+    # Depth filter config file (e.g. /config/depthfilter/Openni_device.json)
+    depth_filter_config: ""
+
+    # IR stream
+    enable_ir: false
+    ir_width: 640
+    ir_height: 400
+    ir_fps: 10
+    ir_format: Y10
+    flip_ir: false
+    ir_qos: default
+    ir_camera_info_qos: default
+    enable_ir_auto_exposure: true
+    ir_exposure: -1
+    ir_gain: -1
+
+    # TF
+    publish_tf: true
+    tf_publish_rate: 0.0
+
+    # Camera info URLs
+    ir_info_url: ""
+    color_info_url: ""
+
+    # Logging
+    log_level: none
+
+    # Extrinsics
+    enable_publish_extrinsic: false
+
+    # Device properties / filters
+    enable_soft_filter: false
+    enable_ldp: true
+    soft_filter_max_diff: -1
+    soft_filter_speckle_size: -1
+    enable_noise_removal_filter: false
+
+    # Timestamping
+    use_hardware_time: false
+    enable_depth_scale: true
+
+    # Align
+    align_mode: HW
+
+    # Laser / heartbeat / industry mode
+    laser_energy_level: -1
+    enable_heartbeat: false
+    industry_mode: ""
+
 
 

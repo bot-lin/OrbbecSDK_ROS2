@@ -1,19 +1,100 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import PushRosNamespace
-from launch.actions import GroupAction
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
-from launch_ros.actions import Node
 import os
 import yaml
+from ament_index_python.packages import get_package_share_directory
+
+
+def _extract_camera_blocks(data: dict):
+    """
+    Returns a list of (block_key, ros__parameters_dict).
+    For multi-camera dcw2.yaml like:
+      dcw2_1: {ros__parameters: {...}}
+      dcw2_2: {ros__parameters: {...}}
+    """
+    blocks = []
+    if not isinstance(data, dict):
+        return blocks
+    for k, v in data.items():
+        if isinstance(v, dict) and isinstance(v.get("ros__parameters"), dict):
+            blocks.append((str(k), dict(v["ros__parameters"])))
+    return blocks
+
+
+def _launch_setup(context, *args, **kwargs):
+    config_file_path = LaunchConfiguration("config_file_path").perform(context)
+    with open(config_file_path, "r") as f:
+        data = yaml.safe_load(f) or {}
+
+    blocks = _extract_camera_blocks(data)
+    # Backward compatible single-camera formats:
+    # 1) {/**: {ros__parameters: {...}}}
+    # 2) {ros__parameters: {...}}
+    if not blocks:
+        if isinstance(data, dict) and isinstance(data.get("/**"), dict) and isinstance(
+            data["/**"].get("ros__parameters"), dict
+        ):
+            blocks = [("/**", dict(data["/**"]["ros__parameters"]))]
+        elif isinstance(data, dict) and isinstance(data.get("ros__parameters"), dict):
+            blocks = [("ros__parameters", dict(data["ros__parameters"]))]
+        else:
+            raise RuntimeError(
+                f"No camera blocks found in {config_file_path}. "
+                "Expected top-level keys like dcw2_1/dcw2_2 with ros__parameters."
+            )
+
+    camera_count = len(blocks)
+
+    # If user passes device_num explicitly, keep it; otherwise default to camera_count.
+    device_num_str = LaunchConfiguration("device_num").perform(context)
+    try:
+        device_num_val = int(device_num_str)
+    except Exception:
+        device_num_val = camera_count
+    if device_num_val <= 0:
+        device_num_val = camera_count
+
+    composable_nodes = []
+    for block_key, params in blocks:
+        # Namespace / node name: prefer camera_name in yaml, fallback to block key.
+        cam_ns = str(params.get("camera_name") or block_key)
+        params["device_num"] = device_num_val
+
+        composable_nodes.append(
+            ComposableNode(
+                package="orbbec_camera",
+                plugin="orbbec_camera::OBCameraNodeDriver",
+                name=cam_ns,
+                namespace=cam_ns,
+                parameters=[params],
+                extra_arguments=[{"use_intra_process_comms": True}],
+            )
+        )
+
+    container = ComposableNodeContainer(
+        name="camera_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container",
+        composable_node_descriptions=composable_nodes,
+        output="screen",
+    )
+
+    return [container]
 
 
 def generate_launch_description():
-    # Declare arguments
+    default_config_file = os.path.join("/data", "params", "dcw2.yaml")
+
     args = [
         # YAML parameter file. Loaded first, then overridden by launch arguments below.
+        DeclareLaunchArgument(
+            "config_file_path",
+            default_value=default_config_file,
+        ),
         DeclareLaunchArgument('camera_name', default_value='camera'),
         DeclareLaunchArgument('depth_registration', default_value='false'),
         DeclareLaunchArgument('serial_number', default_value=''),
@@ -94,55 +175,5 @@ def generate_launch_description():
         DeclareLaunchArgument('industry_mode', default_value=''),
     ]
 
-    with open(os.path.join('/data', 'params', 'dcw2.yaml'), 'r') as f:
-        params = yaml.safe_load(f)["dcw2"]["ros__parameters"]
-
-    # get  ROS_DISTRO
-    ros_distro = os.environ["ROS_DISTRO"]
-    if ros_distro == "foxy":
-        return LaunchDescription(
-            args
-            + [
-                Node(
-                    package="orbbec_camera",
-                    executable="orbbec_camera_node",
-                    name="ob_camera_node",
-                    namespace=LaunchConfiguration("camera_name"),
-                    parameters=[params],
-                    output="screen",
-                )
-            ]
-        )
-    # Define the ComposableNode
-    else:
-        # Define the ComposableNode
-        compose_node = ComposableNode(
-            package="orbbec_camera",
-            plugin="orbbec_camera::OBCameraNodeDriver",
-            name=LaunchConfiguration("camera_name"),
-            namespace="",
-            parameters=[params],
-            # Reduce serialization/copy overhead within the component container
-            extra_arguments=[{'use_intra_process_comms': True}],
-        )
-        # Define the ComposableNodeContainer
-        container = ComposableNodeContainer(
-            name="camera_container",
-            namespace="",
-            package="rclcpp_components",
-            executable="component_container",
-            composable_node_descriptions=[
-                compose_node,
-            ],
-            output="screen",
-        )
-        # Launch description
-        ld = LaunchDescription(
-            args
-            + [
-                GroupAction(
-                    [PushRosNamespace(LaunchConfiguration("camera_name")), container]
-                )
-            ]
-        )
-        return ld
+    # Multi-camera boot-up count is derived from the YAML file blocks (dcw2_1, dcw2_2, ...).
+    return LaunchDescription(args + [OpaqueFunction(function=_launch_setup)])
