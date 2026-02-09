@@ -87,7 +87,7 @@ def _launch_setup(context, *args, **kwargs):
 
 
 def generate_launch_description():
-    default_config_file = os.path.join("/data", "params", "dcw2.yaml")
+    default_config_file = os.path.join("/data", "params", "1dcw2.yaml")
 
     args = [
         # YAML parameter file. Loaded first, then overridden by launch arguments below.

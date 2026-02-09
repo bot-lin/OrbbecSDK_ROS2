@@ -1616,7 +1616,6 @@ void OBCameraNode::publishDepthPointCloud(const std::shared_ptr<ob::FrameSet> &f
   depth_point_cloud_filter_.setCreatePointFormat(OB_FORMAT_POINT);
   auto result_frame = depth_point_cloud_filter_.process(depth_frame);
   if (!result_frame) {
-    RCLCPP_ERROR_STREAM(logger_, "Failed to process depth frame");
     return;
   }
   auto point_size = result_frame->dataSize() / sizeof(OBPoint);
