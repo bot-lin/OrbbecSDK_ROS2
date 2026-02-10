@@ -27,6 +27,7 @@
 #include <vector>
 #include <atomic>
 #include <opencv2/opencv.hpp>
+#include <sensor_msgs/msg/compressed_image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2_ros/static_transform_broadcaster.h>
@@ -403,6 +404,7 @@ class OBCameraNode {
   std::map<stream_index_pair, std::shared_ptr<image_publisher>> image_publishers_;
   std::map<stream_index_pair, rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr>
       camera_info_publishers_;
+  rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr compressed_color_pub_;
 
   std::map<stream_index_pair, rclcpp::Service<GetInt32>::SharedPtr> get_exposure_srv_;
   std::map<stream_index_pair, rclcpp::Service<SetInt32>::SharedPtr> set_exposure_srv_;
@@ -440,6 +442,7 @@ class OBCameraNode {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr depth_cloud_pub_;
   bool enable_point_cloud_ = true;
   bool enable_colored_point_cloud_ = false;
+  bool enable_compressed_color_publish_ = true;
   std::recursive_mutex point_cloud_mutex_;
 
   orbbec_camera_msgs::msg::DeviceInfo device_info_;

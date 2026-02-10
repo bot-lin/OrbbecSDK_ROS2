@@ -1142,6 +1142,7 @@ void OBCameraNode::getParameters() {
   setAndGetNodeParameter<std::string>(ir_info_url_, "ir_info_url", "");
   setAndGetNodeParameter<std::string>(color_info_url_, "color_info_url", "");
   setAndGetNodeParameter(enable_colored_point_cloud_, "enable_colored_point_cloud", false);
+  setAndGetNodeParameter(enable_compressed_color_publish_, "enable_compressed_color_publish", true);
   setAndGetNodeParameter(enable_d2c_viewer_, "enable_d2c_viewer", false);
   setAndGetNodeParameter(enable_hardware_d2d_, "enable_hardware_d2d", true);
   setAndGetNodeParameter(enable_soft_filter_, "enable_soft_filter", false);
@@ -1489,6 +1490,16 @@ void OBCameraNode::setupPublishers() {
             *node_, "color/image_undistorted", image_qos_profile);
       }
     }
+  }
+
+  if (enable_compressed_color_publish_ && enable_stream_[COLOR]) {
+    auto color_qos_profile = getRMWQosProfileFromString(image_qos_[COLOR]);
+    if (use_intra_process_) {
+      color_qos_profile = rmw_qos_profile_default;
+    }
+    compressed_color_pub_ = node_->create_publisher<sensor_msgs::msg::CompressedImage>(
+        "color/image_raw/compressedDirect",
+        rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(color_qos_profile), color_qos_profile));
   }
 
   if (enable_sync_output_accel_gyro_) {
@@ -2186,9 +2197,40 @@ void OBCameraNode::onNewColorFrameCallback() {
     }
 
     std::shared_ptr<ob::FrameSet> frameSet = color_frame_queue_.front();
-    is_color_frame_decoded_ = decodeColorFrameToBuffer(frameSet->colorFrame(), rgb_buffer_);
+    auto color_frame = frameSet->colorFrame();
+
+    // Publish raw compressed frame directly (zero CPU decode) if enabled and subscribed.
+    if (compressed_color_pub_ && compressed_color_pub_->get_subscription_count() > 0 &&
+        color_frame && (color_frame->format() == OB_FORMAT_MJPG ||
+                        color_frame->format() == OB_FORMAT_MJPEG)) {
+      auto video_frame = color_frame->as<ob::VideoFrame>();
+      if (video_frame) {
+        auto compressed_msg = std::make_unique<sensor_msgs::msg::CompressedImage>();
+        compressed_msg->header.stamp = fromUsToROSTime(getFrameTimestampUs(video_frame));
+        compressed_msg->header.frame_id = optical_frame_id_[COLOR];
+        compressed_msg->format = "jpeg";
+        compressed_msg->data.assign(
+            static_cast<const uint8_t *>(video_frame->data()),
+            static_cast<const uint8_t *>(video_frame->data()) + video_frame->dataSize());
+        compressed_color_pub_->publish(std::move(compressed_msg));
+      }
+    }
+
+    // Only decode if someone subscribes to the decoded image or colored point cloud needs RGB.
+    bool need_decoded_rgb =
+        (image_publishers_.count(COLOR) &&
+         image_publishers_[COLOR]->get_subscription_count() > 0) ||
+        (enable_colored_point_cloud_ && depth_registration_cloud_pub_ &&
+         depth_registration_cloud_pub_->get_subscription_count() > 0) ||
+        (enable_d2c_viewer_);
+    if (need_decoded_rgb) {
+      is_color_frame_decoded_ = decodeColorFrameToBuffer(color_frame, rgb_buffer_);
+    } else {
+      is_color_frame_decoded_ = false;
+    }
+
     publishPointCloud(frameSet);
-    onNewFrameCallback(frameSet->colorFrame(), COLOR);
+    onNewFrameCallback(color_frame, COLOR);
     color_frame_queue_.pop();
   }
 
