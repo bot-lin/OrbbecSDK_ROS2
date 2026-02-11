@@ -70,7 +70,7 @@ def _launch_setup(context, *args, **kwargs):
                 name=cam_ns,
                 namespace=cam_ns,
                 parameters=[params],
-                extra_arguments=[{"use_intra_process_comms": False}],
+                extra_arguments=[{"use_intra_process_comms": True}],
             )
         )
 
