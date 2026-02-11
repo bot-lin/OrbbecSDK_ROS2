@@ -1470,9 +1470,7 @@ void OBCameraNode::setupPublishers() {
     if (use_intra_process_) {
       image_qos_profile = rmw_qos_profile_default;
     }
-    // Force COLOR raw image to use plain ROS publisher to avoid image_transport side topics
-    // (/compressed, /compressedDepth, /theora). Keep image_transport behavior for other streams.
-    if (use_intra_process_ || stream_index == COLOR) {
+    if (use_intra_process_) {
       image_publishers_[stream_index] =
           std::make_shared<image_rcl_publisher>(*node_, topic, image_qos_profile);
     } else {
