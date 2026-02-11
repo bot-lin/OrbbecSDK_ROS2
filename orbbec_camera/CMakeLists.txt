@@ -54,13 +54,11 @@ find_package(PkgConfig REQUIRED)
 
 
 if(USE_RK_HW_DECODER)
-  pkg_search_module(RK_MPP rockchip_mpp mpp)
+  pkg_search_module(RK_MPP REQUIRED rockchip_mpp)
   if(NOT RK_MPP_FOUND)
-    message(FATAL_ERROR
-      "Rockchip MPP pkg-config module not found. Tried: rockchip_mpp, mpp. "
-      "Install the MPP development package and ensure PKG_CONFIG_PATH includes its .pc directory.")
+    message(FATAL_ERROR "rockchip_mpp is not found")
   endif()
-  pkg_search_module(RGA librga rga)
+  pkg_search_module(RGA librga)
   if(NOT RGA_FOUND)
     add_definitions(-DUSE_LIBYUV)
     message("librga is not found, use libyuv instead")
@@ -137,7 +135,6 @@ set(SOURCE_FILES
   src/d2c_viewer.cpp
   src/dynamic_params.cpp
   src/image_publisher.cpp
-  src/mjpeg_streamer.cpp
   src/ob_camera_node_driver.cpp
   src/ob_camera_node.cpp
   src/ros_param_backend.cpp

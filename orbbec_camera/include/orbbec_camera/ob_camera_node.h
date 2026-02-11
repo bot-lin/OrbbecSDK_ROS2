@@ -59,7 +59,6 @@
 #include "orbbec_camera_msgs/srv/set_string.hpp"
 #include "orbbec_camera/constants.h"
 #include "orbbec_camera/dynamic_params.h"
-#include "orbbec_camera/mjpeg_streamer.h"
 #include "orbbec_camera/d2c_viewer.h"
 #include "magic_enum/magic_enum.hpp"
 #include "orbbec_camera/image_publisher.h"
@@ -444,9 +443,6 @@ class OBCameraNode {
   bool enable_point_cloud_ = true;
   bool enable_colored_point_cloud_ = false;
   bool enable_compressed_color_publish_ = true;
-  bool enable_mjpeg_stream_ = false;
-  int mjpeg_stream_port_ = 8081;
-  std::unique_ptr<MjpegStreamer> mjpeg_streamer_;
   std::recursive_mutex point_cloud_mutex_;
 
   orbbec_camera_msgs::msg::DeviceInfo device_info_;

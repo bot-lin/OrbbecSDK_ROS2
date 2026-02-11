@@ -80,13 +80,6 @@ OBCameraNode::OBCameraNode(rclcpp::Node *node, std::shared_ptr<ob::Device> devic
     xy_table_data_size_ = width_[DEPTH] * height_[DEPTH] * 2;
     xy_table_data_ = new float[xy_table_data_size_];
   }
-  if (enable_mjpeg_stream_ && enable_stream_[COLOR]) {
-    mjpeg_streamer_ = std::make_unique<MjpegStreamer>(mjpeg_stream_port_);
-    mjpeg_streamer_->start();
-    RCLCPP_INFO_STREAM(logger_,
-                       "MJPEG HTTP stream started on port " << mjpeg_stream_port_
-                       << " (http://<host>:" << mjpeg_stream_port_ << "/)");
-  }
   is_camera_node_initialized_ = true;
 }
 
@@ -130,10 +123,6 @@ void OBCameraNode::clean() noexcept {
     colorFrameThread_->join();
   }
 
-  if (mjpeg_streamer_) {
-    mjpeg_streamer_->stop();
-    mjpeg_streamer_.reset();
-  }
   RCLCPP_WARN_STREAM(logger_, "stop streams");
   stopStreams();
   stopIMU();
@@ -1154,8 +1143,6 @@ void OBCameraNode::getParameters() {
   setAndGetNodeParameter<std::string>(color_info_url_, "color_info_url", "");
   setAndGetNodeParameter(enable_colored_point_cloud_, "enable_colored_point_cloud", false);
   setAndGetNodeParameter(enable_compressed_color_publish_, "enable_compressed_color_publish", true);
-  setAndGetNodeParameter(enable_mjpeg_stream_, "enable_mjpeg_stream", false);
-  setAndGetNodeParameter<int>(mjpeg_stream_port_, "mjpeg_stream_port", 8081);
   setAndGetNodeParameter(enable_d2c_viewer_, "enable_d2c_viewer", false);
   setAndGetNodeParameter(enable_hardware_d2d_, "enable_hardware_d2d", true);
   setAndGetNodeParameter(enable_soft_filter_, "enable_soft_filter", false);
@@ -2213,28 +2200,19 @@ void OBCameraNode::onNewColorFrameCallback() {
     auto color_frame = frameSet->colorFrame();
 
     // Publish raw compressed frame directly (zero CPU decode) if enabled and subscribed.
-    // Also feed MJPEG HTTP streamer if enabled.
-    if (color_frame && (color_frame->format() == OB_FORMAT_MJPG ||
+    if (compressed_color_pub_ && compressed_color_pub_->get_subscription_count() > 0 &&
+        color_frame && (color_frame->format() == OB_FORMAT_MJPG ||
                         color_frame->format() == OB_FORMAT_MJPEG)) {
       auto video_frame = color_frame->as<ob::VideoFrame>();
       if (video_frame) {
-        const auto *jpeg_data = static_cast<const uint8_t *>(video_frame->data());
-        const size_t jpeg_size = video_frame->dataSize();
-
-        // ROS2 CompressedImage topic
-        if (compressed_color_pub_ && compressed_color_pub_->get_subscription_count() > 0) {
-          auto compressed_msg = std::make_unique<sensor_msgs::msg::CompressedImage>();
-          compressed_msg->header.stamp = fromUsToROSTime(getFrameTimestampUs(video_frame));
-          compressed_msg->header.frame_id = optical_frame_id_[COLOR];
-          compressed_msg->format = "jpeg";
-          compressed_msg->data.assign(jpeg_data, jpeg_data + jpeg_size);
-          compressed_color_pub_->publish(std::move(compressed_msg));
-        }
-
-        // HTTP MJPEG stream
-        if (mjpeg_streamer_) {
-          mjpeg_streamer_->sendFrame(jpeg_data, jpeg_size);
-        }
+        auto compressed_msg = std::make_unique<sensor_msgs::msg::CompressedImage>();
+        compressed_msg->header.stamp = fromUsToROSTime(getFrameTimestampUs(video_frame));
+        compressed_msg->header.frame_id = optical_frame_id_[COLOR];
+        compressed_msg->format = "jpeg";
+        compressed_msg->data.assign(
+            static_cast<const uint8_t *>(video_frame->data()),
+            static_cast<const uint8_t *>(video_frame->data()) + video_frame->dataSize());
+        compressed_color_pub_->publish(std::move(compressed_msg));
       }
     }
 
@@ -2314,40 +2292,22 @@ bool OBCameraNode::decodeColorFrameToBuffer(const std::shared_ptr<ob::Frame> &fr
   if (!frame) {
     return false;
   }
-  const bool is_mjpeg_color_frame =
-      frame->format() == OB_FORMAT_MJPG || frame->format() == OB_FORMAT_MJPEG;
 
 #if defined(USE_RK_HW_DECODER) || defined(USE_NV_HW_DECODER)
-  if (is_mjpeg_color_frame) {
-    if (!jpeg_decoder_) {
-      RCLCPP_ERROR_SKIPFIRST_THROTTLE(
-          logger_, *(node_->get_clock()), 5000,
-          "MJPEG color frame decode requires VPU decoder but decoder is not initialized");
-      return false;
+  if (frame && frame->format() != OB_FORMAT_RGB888) {
+    if (frame->format() == OB_FORMAT_MJPG && jpeg_decoder_) {
+      CHECK_NOTNULL(jpeg_decoder_.get());
+      CHECK_NOTNULL(rgb_buffer_);
+      auto video_frame = frame->as<ob::ColorFrame>();
+      bool ret = jpeg_decoder_->decode(video_frame, rgb_buffer_);
+      if (!ret) {
+        RCLCPP_ERROR_STREAM(logger_, "Decode frame failed");
+        is_decoded = false;
+
+      } else {
+        is_decoded = true;
+      }
     }
-    CHECK_NOTNULL(jpeg_decoder_.get());
-    CHECK_NOTNULL(rgb_buffer_);
-    auto video_frame = frame->as<ob::ColorFrame>();
-    if (!video_frame) {
-      RCLCPP_ERROR_SKIPFIRST_THROTTLE(logger_, *(node_->get_clock()), 1000,
-                                      "Failed to cast MJPEG frame to ColorFrame");
-      return false;
-    }
-    bool ret = jpeg_decoder_->decode(video_frame, rgb_buffer_);
-    if (!ret) {
-      RCLCPP_ERROR_SKIPFIRST_THROTTLE(logger_, *(node_->get_clock()), 1000,
-                                      "VPU decode for MJPEG color frame failed");
-      return false;
-    }
-    is_decoded = true;
-  }
-#else
-  if (is_mjpeg_color_frame) {
-    RCLCPP_ERROR_SKIPFIRST_THROTTLE(
-        logger_, *(node_->get_clock()), 5000,
-        "MJPEG color frame decode requires hardware decoder (VPU). "
-        "Rebuild with USE_RK_HW_DECODER or USE_NV_HW_DECODER");
-    return false;
   }
 #endif
   if (!is_decoded) {
