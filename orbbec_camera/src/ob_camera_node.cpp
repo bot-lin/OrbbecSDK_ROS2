@@ -2240,9 +2240,13 @@ void OBCameraNode::onNewColorFrameCallback() {
       }
     }
 
-    // Decode color only when color/image_raw has subscribers.
+    // Only decode if someone subscribes to the decoded image or colored point cloud needs RGB.
     bool need_decoded_rgb =
-        image_publishers_.count(COLOR) && image_publishers_[COLOR]->get_subscription_count() > 0;
+        (image_publishers_.count(COLOR) &&
+         image_publishers_[COLOR]->get_subscription_count() > 0) ||
+        (enable_colored_point_cloud_ && depth_registration_cloud_pub_ &&
+         depth_registration_cloud_pub_->get_subscription_count() > 0) ||
+        (enable_d2c_viewer_);
     if (need_decoded_rgb) {
       is_color_frame_decoded_ = decodeColorFrameToBuffer(color_frame, rgb_buffer_);
     } else {
@@ -2294,16 +2298,61 @@ bool OBCameraNode::decodeColorFrameToBuffer(const std::shared_ptr<ob::Frame> &fr
   }
   CHECK_NOTNULL(image_publishers_[COLOR]);
   bool has_subscriber = image_publishers_[COLOR]->get_subscription_count() > 0;
+  if (enable_colored_point_cloud_ && depth_registration_cloud_pub_->get_subscription_count() > 0) {
+    has_subscriber = true;
+  }
   if (!has_subscriber) {
     return false;
   }
-  auto video_frame = softwareDecodeColorFrame(frame);
-  if (!video_frame) {
-    RCLCPP_ERROR_STREAM(logger_, "Failed to convert frame to video frame");
+  if (metadata_publishers_.count(COLOR) &&
+      metadata_publishers_[COLOR]->get_subscription_count() > 0) {
+    has_subscriber = true;
+  }
+  if (camera_info_publishers_.count(COLOR) &&
+      camera_info_publishers_[COLOR]->get_subscription_count() > 0) {
+    has_subscriber = true;
+  }
+  bool is_decoded = false;
+  if (!frame) {
     return false;
   }
-  CHECK_NOTNULL(buffer);
-  memcpy(buffer, video_frame->data(), video_frame->dataSize());
+#if defined(USE_RK_HW_DECODER) || defined(USE_NV_HW_DECODER)
+  const bool is_mjpeg_color_frame =
+      frame->format() == OB_FORMAT_MJPG || frame->format() == OB_FORMAT_MJPEG;
+  if (is_mjpeg_color_frame) {
+    if (jpeg_decoder_) {
+      CHECK_NOTNULL(jpeg_decoder_.get());
+      CHECK_NOTNULL(rgb_buffer_);
+      auto video_frame = frame->as<ob::ColorFrame>();
+      if (video_frame) {
+        bool ret = jpeg_decoder_->decode(video_frame, rgb_buffer_);
+        if (ret) {
+          is_decoded = true;
+        } else {
+          RCLCPP_WARN_SKIPFIRST_THROTTLE(logger_, *(node_->get_clock()), 1000,
+                                         "VPU decode failed, fallback to software decode");
+        }
+      } else {
+        RCLCPP_WARN_SKIPFIRST_THROTTLE(logger_, *(node_->get_clock()), 1000,
+                                       "Failed to cast MJPEG frame to ColorFrame, "
+                                       "fallback to software decode");
+      }
+    } else {
+      RCLCPP_WARN_SKIPFIRST_THROTTLE(logger_, *(node_->get_clock()), 5000,
+                                     "VPU decoder is not initialized, fallback to software decode");
+    }
+  }
+#endif
+  if (!is_decoded) {
+    auto video_frame = softwareDecodeColorFrame(frame);
+    if (!video_frame) {
+      RCLCPP_ERROR_STREAM(logger_, "Failed to convert frame to video frame");
+      return false;
+    }
+    CHECK_NOTNULL(buffer);
+    memcpy(buffer, video_frame->data(), video_frame->dataSize());
+    return true;
+  }
   return true;
 }
 
