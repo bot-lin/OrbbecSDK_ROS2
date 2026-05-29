@@ -28,7 +28,7 @@ def generate_launch_description():
         DeclareLaunchArgument('depth_format', default_value='Y11'),
         DeclareLaunchArgument('enable_depth', default_value='true'),
         DeclareLaunchArgument('flip_depth', default_value='false'),
-        DeclareLaunchArgument('depth_qos', default_value='default'),
+        DeclareLaunchArgument('depth_qos', default_value='sensor_data'),
         DeclareLaunchArgument('depth_camera_info_qos', default_value='default'),
         DeclareLaunchArgument('ir_width', default_value='640'),
         DeclareLaunchArgument('ir_height', default_value='400'),

@@ -35,7 +35,7 @@ dcw2_1:
     color_fps: 10
     color_format: MJPG
     flip_color: false
-    color_qos: default
+    color_qos: sensor_data
     color_camera_info_qos: default
     enable_color_auto_exposure: true
     enable_color_auto_exposure_priority: false
@@ -58,7 +58,7 @@ dcw2_1:
     depth_fps: 10
     depth_format: Y11
     flip_depth: false
-    depth_qos: default
+    depth_qos: sensor_data
     depth_camera_info_qos: default
 
     # Depth filter config file (e.g. /config/depthfilter/Openni_device.json)
@@ -147,7 +147,7 @@ dcw2_2:
     color_fps: 10
     color_format: MJPG
     flip_color: false
-    color_qos: default
+    color_qos: sensor_data
     color_camera_info_qos: default
     enable_color_auto_exposure: true
     enable_color_auto_exposure_priority: false
@@ -170,7 +170,7 @@ dcw2_2:
     depth_fps: 10
     depth_format: Y11
     flip_depth: false
-    depth_qos: default
+    depth_qos: sensor_data
     depth_camera_info_qos: default
 
     # Depth filter config file (e.g. /config/depthfilter/Openni_device.json)
@@ -221,6 +221,3 @@ dcw2_2:
     laser_energy_level: -1
     enable_heartbeat: false
     industry_mode: ""
-
-
-

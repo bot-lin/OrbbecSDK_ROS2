@@ -66,7 +66,7 @@ def generate_launch_description():
         DeclareLaunchArgument('color_fps', default_value='0'),
         DeclareLaunchArgument('color_format', default_value='MJPG'),
         DeclareLaunchArgument('enable_color', default_value='true'),
-        DeclareLaunchArgument('color_qos', default_value='default'),
+        DeclareLaunchArgument('color_qos', default_value='sensor_data'),
         DeclareLaunchArgument('color_camera_info_qos', default_value='default'),
         DeclareLaunchArgument('color_rotation', default_value='0'),#color rotation degree : 0, 90, 180, 270
         DeclareLaunchArgument('enable_color_auto_exposure', default_value='true'),
@@ -93,7 +93,7 @@ def generate_launch_description():
         DeclareLaunchArgument('depth_fps', default_value='0'),
         DeclareLaunchArgument('depth_format', default_value='Y16'),
         DeclareLaunchArgument('enable_depth', default_value='true'),
-        DeclareLaunchArgument('depth_qos', default_value='default'),
+        DeclareLaunchArgument('depth_qos', default_value='sensor_data'),
         DeclareLaunchArgument('depth_camera_info_qos', default_value='default'),
         DeclareLaunchArgument('depth_rotation', default_value='0'),#depth rotation degree : 0, 90, 180, 270
         DeclareLaunchArgument('depth_ae_roi_left', default_value='-1'),

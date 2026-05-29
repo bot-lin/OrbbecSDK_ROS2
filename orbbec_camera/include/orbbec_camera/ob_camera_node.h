@@ -320,6 +320,8 @@ class OBCameraNode {
   void onNewFrameCallback(const std::shared_ptr<ob::Frame>& frame,
                           const stream_index_pair& stream_index);
 
+  void logColorSubscriberChanges();
+
   void publishMetadata(const std::shared_ptr<ob::Frame>& frame,
                        const stream_index_pair& stream_index, const std_msgs::msg::Header& header);
 
@@ -615,6 +617,8 @@ class OBCameraNode {
   bool has_first_color_frame_ = false;
   bool use_intra_process_ = false;
   std::string cloud_frame_id_;
+  size_t last_color_raw_subscriber_count_ = 0;
+  size_t last_color_jpeg_subscriber_count_ = 0;
   // color ae roi
   int color_ae_roi_left_ = -1;
   int color_ae_roi_top_ = -1;

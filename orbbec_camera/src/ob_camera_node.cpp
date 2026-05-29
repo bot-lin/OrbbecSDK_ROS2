@@ -1090,7 +1090,9 @@ void OBCameraNode::getParameters() {
     format_[stream_index] = OBFormatFromString(format_str_[stream_index]);
     updateImageConfig(stream_index);
     param_name = stream_name_[stream_index] + "_qos";
-    setAndGetNodeParameter<std::string>(image_qos_[stream_index], param_name, "default");
+    const std::string default_image_qos =
+        (stream_index == COLOR || stream_index == DEPTH) ? "sensor_data" : "default";
+    setAndGetNodeParameter<std::string>(image_qos_[stream_index], param_name, default_image_qos);
     param_name = stream_name_[stream_index] + "_camera_info_qos";
     setAndGetNodeParameter<std::string>(camera_info_qos_[stream_index], param_name, "default");
   }
@@ -1442,9 +1444,6 @@ void OBCameraNode::setupPublishers() {
   using PointCloud2 = sensor_msgs::msg::PointCloud2;
   using CameraInfo = sensor_msgs::msg::CameraInfo;
   auto point_cloud_qos_profile = getRMWQosProfileFromString(point_cloud_qos_);
-  if (use_intra_process_) {
-    point_cloud_qos_profile = rmw_qos_profile_default;
-  }
   if (enable_colored_point_cloud_) {
     depth_registration_cloud_pub_ = node_->create_publisher<PointCloud2>(
         "depth_registered/points",
@@ -1467,9 +1466,6 @@ void OBCameraNode::setupPublishers() {
     std::string topic = name + "/image_raw";
     auto image_qos = image_qos_[stream_index];
     auto image_qos_profile = getRMWQosProfileFromString(image_qos);
-    if (use_intra_process_) {
-      image_qos_profile = rmw_qos_profile_default;
-    }
     // Force COLOR raw image to use plain ROS publisher to avoid image_transport side topics
     // (/compressed, /compressedDepth, /theora). Keep image_transport behavior for other streams.
     if (use_intra_process_ || stream_index == COLOR) {
@@ -1509,9 +1505,6 @@ void OBCameraNode::setupPublishers() {
 
   if (enable_compressed_color_publish_ && enable_stream_[COLOR]) {
     auto color_qos_profile = getRMWQosProfileFromString(image_qos_[COLOR]);
-    if (use_intra_process_) {
-      color_qos_profile = rmw_qos_profile_default;
-    }
     compressed_color_pub_ = node_->create_publisher<sensor_msgs::msg::CompressedImage>(
         "color/image_raw/compressedDirect",
         rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(color_qos_profile), color_qos_profile));
@@ -2213,6 +2206,7 @@ void OBCameraNode::onNewColorFrameCallback() {
 
     std::shared_ptr<ob::FrameSet> frameSet = color_frame_queue_.front();
     auto color_frame = frameSet->colorFrame();
+    logColorSubscriberChanges();
 
     // Publish raw compressed frame directly (zero CPU decode) if enabled and subscribed.
     // Also feed MJPEG HTTP streamer if enabled.
@@ -2234,7 +2228,7 @@ void OBCameraNode::onNewColorFrameCallback() {
         }
 
         // HTTP MJPEG stream
-        if (mjpeg_streamer_) {
+        if (mjpeg_streamer_ && mjpeg_streamer_->clientCount() > 0) {
           mjpeg_streamer_->sendFrame(jpeg_data, jpeg_size);
         }
       }
@@ -2259,6 +2253,27 @@ void OBCameraNode::onNewColorFrameCallback() {
   }
 
   RCLCPP_INFO_STREAM(logger_, "Color frame thread exit!");
+}
+
+void OBCameraNode::logColorSubscriberChanges() {
+  if (image_publishers_.count(COLOR) == 0) {
+    return;
+  }
+  const size_t raw_subscribers = image_publishers_[COLOR]->get_subscription_count();
+  if (raw_subscribers != last_color_raw_subscriber_count_) {
+    RCLCPP_INFO_STREAM(logger_, "color/image_raw subscribers: " << last_color_raw_subscriber_count_
+                                                                << " -> " << raw_subscribers);
+    last_color_raw_subscriber_count_ = raw_subscribers;
+  }
+
+  const size_t jpeg_subscribers =
+      compressed_color_pub_ ? compressed_color_pub_->get_subscription_count() : 0;
+  if (jpeg_subscribers != last_color_jpeg_subscriber_count_) {
+    RCLCPP_INFO_STREAM(logger_, "color/image_raw/compressedDirect subscribers: "
+                                    << last_color_jpeg_subscriber_count_ << " -> "
+                                    << jpeg_subscribers);
+    last_color_jpeg_subscriber_count_ = jpeg_subscribers;
+  }
 }
 
 std::shared_ptr<ob::Frame> OBCameraNode::softwareDecodeColorFrame(
@@ -2303,14 +2318,6 @@ bool OBCameraNode::decodeColorFrameToBuffer(const std::shared_ptr<ob::Frame> &fr
   }
   if (!has_subscriber) {
     return false;
-  }
-  if (metadata_publishers_.count(COLOR) &&
-      metadata_publishers_[COLOR]->get_subscription_count() > 0) {
-    has_subscriber = true;
-  }
-  if (camera_info_publishers_.count(COLOR) &&
-      camera_info_publishers_[COLOR]->get_subscription_count() > 0) {
-    has_subscriber = true;
   }
   bool is_decoded = false;
   if (!frame) {

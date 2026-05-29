@@ -28,7 +28,7 @@ def generate_launch_description():
         DeclareLaunchArgument('color_format', default_value='MJPG'),
         DeclareLaunchArgument('enable_color', default_value='true'),
         DeclareLaunchArgument('flip_color', default_value='false'),
-        DeclareLaunchArgument('color_qos', default_value='default'),
+        DeclareLaunchArgument('color_qos', default_value='sensor_data'),
         DeclareLaunchArgument('color_camera_info_qos', default_value='default'),
         DeclareLaunchArgument('enable_color_auto_exposure', default_value='true'),
         DeclareLaunchArgument('color_exposure', default_value='-1'),

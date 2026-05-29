@@ -28,7 +28,7 @@ def generate_launch_description():
         DeclareLaunchArgument('depth_format', default_value='Y12'),
         DeclareLaunchArgument('enable_depth', default_value='true'),
         DeclareLaunchArgument('flip_depth', default_value='false'),
-        DeclareLaunchArgument('depth_qos', default_value='default'),
+        DeclareLaunchArgument('depth_qos', default_value='sensor_data'),
         DeclareLaunchArgument('depth_camera_info_qos', default_value='default'),
         # /config/depthfilter/Openni_device.json，need config path.
         DeclareLaunchArgument('depth_filter_config', default_value=''),
