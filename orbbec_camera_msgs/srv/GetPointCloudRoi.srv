@@ -1,0 +1,20 @@
+# ROI bounds in base_footprint, in meters.
+float64 min_x
+float64 max_x
+float64 min_y
+float64 max_y
+float64 min_z
+float64 max_z
+# Optional ground-plane removal in base_footprint. When enabled, points within
+# ground_distance_threshold meters of ax + by + cz + d = 0 are removed.
+# If a/b/c are all zero, the service uses the default horizontal plane z = 0.
+bool remove_ground
+float64 ground_plane_a
+float64 ground_plane_b
+float64 ground_plane_c
+float64 ground_plane_d
+float64 ground_distance_threshold
+---
+bool success
+string message
+sensor_msgs/PointCloud2 point_cloud

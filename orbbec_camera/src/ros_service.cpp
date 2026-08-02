@@ -15,6 +15,10 @@
  *******************************************************************************/
 
 #include "orbbec_camera/ob_camera_node.h"
+
+#include <cmath>
+#include <limits>
+
 #include <rclcpp/rclcpp.hpp>
 #include <nlohmann/json.hpp>
 #include <thread>
@@ -166,6 +170,11 @@ void OBCameraNode::setupCameraCtrlServices() {
       "save_point_cloud", [this](const std::shared_ptr<std_srvs::srv::Empty::Request> request,
                                  std::shared_ptr<std_srvs::srv::Empty::Response> response) {
         savePointCloudCallback(request, response);
+      });
+  get_point_cloud_roi_srv_ = node_->create_service<GetPointCloudRoi>(
+      "get_point_cloud_roi", [this](const std::shared_ptr<GetPointCloudRoi::Request> request,
+                                    std::shared_ptr<GetPointCloudRoi::Response> response) {
+        getPointCloudRoiCallback(request, response);
       });
   switch_ir_camera_srv_ = node_->create_service<SetString>(
       "switch_ir", [this](const std::shared_ptr<SetString::Request> request,
@@ -779,6 +788,71 @@ void OBCameraNode::savePointCloudCallback(
   if (enable_colored_point_cloud_) {
     save_colored_point_cloud_ = true;
   }
+}
+
+void OBCameraNode::getPointCloudRoiCallback(
+    const std::shared_ptr<GetPointCloudRoi::Request>& request,
+    std::shared_ptr<GetPointCloudRoi::Response>& response) {
+  if (request->min_x > request->max_x || request->min_y > request->max_y ||
+      request->min_z > request->max_z) {
+    response->success = false;
+    response->message = "Invalid ROI: each min value must be <= the matching max value";
+    return;
+  }
+
+  PointCloudRoi roi;
+  roi.min_x = request->min_x;
+  roi.max_x = request->max_x;
+  roi.min_y = request->min_y;
+  roi.max_y = request->max_y;
+  roi.min_z = request->min_z;
+  roi.max_z = request->max_z;
+
+  PointCloudGroundPlane ground_plane;
+  const PointCloudGroundPlane *ground_plane_ptr = nullptr;
+  if (request->remove_ground) {
+    if (request->ground_distance_threshold < 0.0) {
+      response->success = false;
+      response->message = "Invalid ground_distance_threshold: value must be >= 0";
+      return;
+    }
+    ground_plane.a = request->ground_plane_a;
+    ground_plane.b = request->ground_plane_b;
+    ground_plane.c = request->ground_plane_c;
+    ground_plane.d = request->ground_plane_d;
+    const double normal_norm = std::sqrt(ground_plane.a * ground_plane.a +
+                                         ground_plane.b * ground_plane.b +
+                                         ground_plane.c * ground_plane.c);
+    if (normal_norm <= std::numeric_limits<double>::epsilon()) {
+      ground_plane.a = 0.0;
+      ground_plane.b = 0.0;
+      ground_plane.c = 1.0;
+      ground_plane.d = 0.0;
+    }
+    if (request->ground_distance_threshold == 0.0) {
+      ground_plane.distance_threshold = 0.05;
+    } else {
+      ground_plane.distance_threshold = request->ground_distance_threshold;
+    }
+    ground_plane_ptr = &ground_plane;
+  }
+
+  sensor_msgs::msg::PointCloud2::UniquePtr point_cloud_msg;
+  size_t valid_count = 0;
+  std::string message;
+  if (!createDepthPointCloud(point_cloud_msg, true, &roi, false, valid_count, message,
+                             ground_plane_ptr)) {
+    response->success = false;
+    response->message = message.empty() ? "Failed to create point cloud" : message;
+    return;
+  }
+
+  response->success = true;
+  response->message = "Returned " + std::to_string(valid_count) + " points in base_footprint";
+  if (ground_plane_ptr) {
+    response->message += " after ground-plane removal";
+  }
+  response->point_cloud = std::move(*point_cloud_msg);
 }
 
 void OBCameraNode::switchIRCameraCallback(const std::shared_ptr<SetString::Request>& request,

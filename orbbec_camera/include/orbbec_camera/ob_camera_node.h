@@ -53,6 +53,7 @@
 #include "orbbec_camera_msgs/msg/metadata.hpp"
 #include "orbbec_camera_msgs/msg/imu_info.hpp"
 #include "orbbec_camera_msgs/srv/get_int32.hpp"
+#include "orbbec_camera_msgs/srv/get_point_cloud_roi.hpp"
 #include "orbbec_camera_msgs/srv/get_string.hpp"
 #include "orbbec_camera_msgs/srv/set_int32.hpp"
 #include "orbbec_camera_msgs/srv/get_bool.hpp"
@@ -96,11 +97,17 @@
   (static_cast<std::ostringstream&&>(std::ostringstream() << getNamespaceStr() << "_odom_frame")) \
       .str()
 
+namespace tf2_ros {
+class Buffer;
+class TransformListener;
+}  // namespace tf2_ros
+
 namespace orbbec_camera {
 using GetDeviceInfo = orbbec_camera_msgs::srv::GetDeviceInfo;
 using Extrinsics = orbbec_camera_msgs::msg::Extrinsics;
 using SetInt32 = orbbec_camera_msgs::srv::SetInt32;
 using GetInt32 = orbbec_camera_msgs::srv::GetInt32;
+using GetPointCloudRoi = orbbec_camera_msgs::srv::GetPointCloudRoi;
 using GetString = orbbec_camera_msgs::srv::GetString;
 using SetString = orbbec_camera_msgs::srv::SetString;
 using SetBool = std_srvs::srv::SetBool;
@@ -163,6 +170,23 @@ class OBCameraNode {
     stream_index_pair stream_{};
     Eigen::Vector3d data_{};
     double timestamp_ = -1;  // in nanoseconds
+  };
+
+  struct PointCloudRoi {
+    double min_x = 0.0;
+    double max_x = 0.0;
+    double min_y = 0.0;
+    double max_y = 0.0;
+    double min_z = 0.0;
+    double max_z = 0.0;
+  };
+
+  struct PointCloudGroundPlane {
+    double a = 0.0;
+    double b = 0.0;
+    double c = 1.0;
+    double d = 0.0;
+    double distance_threshold = 0.05;
   };
 
   void setupDevices();
@@ -293,6 +317,9 @@ class OBCameraNode {
   void savePointCloudCallback(const std::shared_ptr<std_srvs::srv::Empty::Request>& request,
                               std::shared_ptr<std_srvs::srv::Empty::Response>& response);
 
+  void getPointCloudRoiCallback(const std::shared_ptr<GetPointCloudRoi::Request>& request,
+                                std::shared_ptr<GetPointCloudRoi::Response>& response);
+
   void switchIRCameraCallback(const std::shared_ptr<SetString::Request>& request,
                               std::shared_ptr<SetString::Response>& response);
 
@@ -304,6 +331,31 @@ class OBCameraNode {
   void publishDepthPointCloud(const std::shared_ptr<ob::FrameSet>& frame_set);
 
   void publishColoredPointCloud(const std::shared_ptr<ob::FrameSet>& frame_set);
+
+  void setupPointCloudTf();
+
+  bool lookupBaseFootprintTransform(const std::string& source_frame_id,
+                                    tf2::Transform& transform) const;
+
+  bool pointInBaseFootprintRoi(const tf2::Vector3& point) const;
+
+  bool pointInBaseFootprintRoi(const tf2::Vector3& point, const PointCloudRoi& roi) const;
+
+  bool pointOnRemovedGroundPlane(const tf2::Vector3& point,
+                                 const PointCloudGroundPlane& ground_plane) const;
+
+  bool finalizePointCloud(sensor_msgs::msg::PointCloud2& point_cloud_msg,
+                          const std::string& source_frame_id, const rclcpp::Time& timestamp,
+                          bool output_in_base_footprint, const PointCloudRoi* roi,
+                          bool keep_ordered_layout, size_t& valid_count,
+                          std::string* message = nullptr,
+                          const PointCloudGroundPlane* ground_plane = nullptr);
+
+  bool createDepthPointCloud(sensor_msgs::msg::PointCloud2::UniquePtr& point_cloud_msg,
+                             bool output_in_base_footprint, const PointCloudRoi* roi,
+                             bool apply_point_cloud_filters, size_t& valid_count,
+                             std::string& message,
+                             const PointCloudGroundPlane* ground_plane = nullptr);
 
   std::shared_ptr<ob::Frame> processDepthFrameFilter(std::shared_ptr<ob::Frame>& frame);
 
@@ -471,6 +523,7 @@ class OBCameraNode {
   std::atomic_bool save_colored_point_cloud_{false};
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr save_images_srv_;
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr save_point_cloud_srv_;
+  rclcpp::Service<GetPointCloudRoi>::SharedPtr get_point_cloud_roi_srv_;
   std::string depth_filter_config_;
   bool enable_depth_filter_ = false;
   bool enable_soft_filter_ = true;
@@ -553,6 +606,17 @@ class OBCameraNode {
   // points that have fewer than point_cloud_min_neighbors_ neighbors within point_cloud_radius_ are dropped.
   double point_cloud_radius_ = 0.0;
   int point_cloud_min_neighbors_ = 1;
+  bool point_cloud_in_base_footprint_ = true;
+  std::string base_footprint_frame_id_ = "base_footprint";
+  bool enable_point_cloud_roi_ = false;
+  double point_cloud_roi_min_x_ = -1000000.0;
+  double point_cloud_roi_max_x_ = 1000000.0;
+  double point_cloud_roi_min_y_ = -1000000.0;
+  double point_cloud_roi_max_y_ = 1000000.0;
+  double point_cloud_roi_min_z_ = -1000000.0;
+  double point_cloud_roi_max_z_ = 1000000.0;
+  std::shared_ptr<tf2_ros::Buffer> point_cloud_tf_buffer_ = nullptr;
+  std::shared_ptr<tf2_ros::TransformListener> point_cloud_tf_listener_ = nullptr;
   bool enable_depth_scale_ = true;
   std::shared_ptr<ob::Frame> depth_frame_ = nullptr;
   std::string device_preset_ = "Default";

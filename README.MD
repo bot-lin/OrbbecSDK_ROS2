@@ -330,6 +330,23 @@ ros2 service call /camera/toggle_ir std_srvs/srv/SetBool "{data : true}"
 ros2 service call /camera/save_point_cloud std_srvs/srv/Empty "{}"
 ```
 
+- get point cloud with ROI in `base_footprint`
+
+```bash
+ros2 service call /camera/get_point_cloud_roi orbbec_camera_msgs/srv/GetPointCloudRoi \
+  "{min_x: 0.0, max_x: 3.0, min_y: -0.8, max_y: 0.8, min_z: 0.0, max_z: 1.5}"
+```
+
+Set `remove_ground: true` to remove points near a ground plane in `base_footprint`. If
+`ground_plane_a/b/c` are omitted or all zero, the service uses the default plane `z = 0`; if
+`ground_distance_threshold` is `0.0`, it uses `0.05` meters.
+
+```bash
+ros2 service call /camera/get_point_cloud_roi orbbec_camera_msgs/srv/GetPointCloudRoi \
+  "{min_x: 0.0, max_x: 3.0, min_y: -0.8, max_y: 0.8, min_z: -0.2, max_z: 1.5, \
+    remove_ground: true, ground_distance_threshold: 0.06}"
+```
+
 ## Efficient intra-process communication:
 
 Our ROS2 Wrapper node supports zero-copy communications if loaded in the same process as a subscriber node. This can
@@ -387,8 +404,17 @@ The following are the launch parameters available:
 
 - `connection_delay`: The delay time in milliseconds for reopening the device. Some devices, such as Astra mini, require
   a longer time to initialize and reopening the device immediately can cause firmware crashes when hot plugging.
-- `enable_point_cloud`: Enables the point cloud.
+- `enable_point_cloud`: Enables publishing `/depth/points`. This parameter can be changed at
+  runtime with `ros2 param set /camera/camera enable_point_cloud true|false`; disabling it stops
+  point cloud topic publication, while the `get_point_cloud_roi` service remains available.
 - `enable_colored_point_cloud`: Enables the RGB point cloud.
+- `point_cloud_in_base_footprint`: Transforms published point cloud points into `base_footprint`. Defaults to `true`
+  and requires a TF path from the camera optical frame to `base_footprint`.
+- `base_footprint_frame_id`: Target frame used when `point_cloud_in_base_footprint` is enabled. Defaults to
+  `base_footprint`.
+- `enable_point_cloud_roi`, `point_cloud_roi_[min|max]_[x|y|z]`: Filters point clouds with a 3D ROI expressed in
+  `base_footprint`. The ROI is applied when `enable_point_cloud_roi` is `true`; unset bounds default to a wide
+  pass-through range.
 - `point_cloud_qos`, `[color|depth|ir]_qos`, `[color|depth|ir]_camera_info_qos`: ROS 2 Message Quality of Service (QoS)
   settings. The possible values
   are `SYSTEM_DEFAULT`, `DEFAULT`, `PARAMETER_EVENTS`, `SERVICES_DEFAULT`, `PARAMETERS`, `SENSOR_DATA` and are
@@ -561,6 +587,7 @@ to `true` in the stream that corresponds to the argument of the launch file.
 - `/camera/get_ir_exposure`
 - `/camera/get_ir_gain`
 - `/camera/get_ldp_status`
+- `/camera/get_point_cloud_roi`
 - `/camera/get_sdk_version`
 - `/camera/get_white_balance`
 - `/camera/set_auto_white_balance`
@@ -588,7 +615,8 @@ to `true` in the stream that corresponds to the argument of the launch file.
 - `/camera/color/image_raw`: The color stream image.
 - `/camera/depth/camera_info`: The depth stream image.
 - `/camera/depth/image_raw`: The depth stream image
-- `/camera/depth/points` : The point cloud, only available when `enable_point_cloud` is `true`.
+- `/camera/depth/points` : The point cloud, published only when `enable_point_cloud` is `true`.
+  `enable_point_cloud` can be toggled at runtime with `ros2 param set`.
 - `/camera/depth_registered/points`: The colored point cloud, only available when `enable_colored_point_cloud`
   is `true`.
 - `/camera/ir/camera_info`: The IR camera info.

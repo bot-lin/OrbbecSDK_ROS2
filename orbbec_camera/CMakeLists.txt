@@ -140,6 +140,7 @@ set(SOURCE_FILES
   src/mjpeg_streamer.cpp
   src/ob_camera_node_driver.cpp
   src/ob_camera_node.cpp
+  src/point_cloud_transform.cpp
   src/ros_param_backend.cpp
   src/ros_service.cpp
   src/synced_imu_publisher.cpp

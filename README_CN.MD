@@ -336,6 +336,23 @@ ros2 service call /camera/toggle_ir std_srvs/srv/SetBool "{data : true}"
 ros2 service call /camera/save_point_cloud std_srvs/srv/Empty "{}"
 ```
 
+- 按`base_footprint`坐标系ROI获取点云
+
+```bash
+ros2 service call /camera/get_point_cloud_roi orbbec_camera_msgs/srv/GetPointCloudRoi \
+  "{min_x: 0.0, max_x: 3.0, min_y: -0.8, max_y: 0.8, min_z: 0.0, max_z: 1.5}"
+```
+
+设置`remove_ground: true`可以移除`base_footprint`坐标系中靠近地面平面的点。
+如果`ground_plane_a/b/c`未设置或全为0，服务默认使用平面`z = 0`；
+如果`ground_distance_threshold`为`0.0`，服务默认使用`0.05`米。
+
+```bash
+ros2 service call /camera/get_point_cloud_roi orbbec_camera_msgs/srv/GetPointCloudRoi \
+  "{min_x: 0.0, max_x: 3.0, min_y: -0.8, max_y: 0.8, min_z: -0.2, max_z: 1.5, \
+    remove_ground: true, ground_distance_threshold: 0.06}"
+```
+
 ## 高效的进程内通信:
 
 我们的 ROS2 Wrapper 节点在与订阅节点加载到同一进程中时，支持 零拷贝通信。这可以显著减少图像或点云等大数据主题的复制次数，尤其是在高分辨率和高帧率的场景下。
@@ -388,9 +405,14 @@ ros2 launch orbbec_camera gemini_intra_process_demo_launch.py
 以下是可用的launch启动参数：
 
 - `connection_delay`: 重新打开设备的延迟时间（以毫秒为单位）。
-- `enable_point_cloud`: 深度点云开关。
+- `enable_point_cloud`: `/depth/points`深度点云发布开关。该参数支持运行时通过
+  `ros2 param set /camera/camera enable_point_cloud true|false`动态切换；关闭后停止发布点云topic，
+  但`get_point_cloud_roi`服务仍可使用。
 - `enable_colored_point_cloud`: RGB点云开关。
 - `cloud_frame_id`:修改ros消息中frame_id名称。
+- `point_cloud_in_base_footprint`: 将发布的点云转换到`base_footprint`坐标系，默认开启，需要存在从相机光学坐标系到`base_footprint`的TF链路。
+- `base_footprint_frame_id`: `point_cloud_in_base_footprint`开启时使用的目标坐标系，默认为`base_footprint`。
+- `enable_point_cloud_roi`, `point_cloud_roi_[min|max]_[x|y|z]`: 按`base_footprint`坐标系下的三维ROI过滤点云，`enable_point_cloud_roi`为`true`时生效；未设置的边界默认使用较大的通行范围。
 - `ordered_pc`:启动无效点云过滤开关。
 - `point_cloud_qos`, `[color|depth|ir]_qos`, `[color|depth|ir]_camera_info_qos`: ROS2消息服务质量(QoS)设置
   可能的值包括： `SYSTEM_DEFAULT`, `DEFAULT`, `PARAMETER_EVENTS`, `SERVICES_DEFAULT`, `PARAMETERS`, `SENSOR_DATA` 并且不区分大小写。这些值分别对应： `rmw_qos_profile_system_default`, `rmw_qos_profile_default`, `rmw_qos_profile_parameter_events`, `rmw_qos_profile_services_default`, `rmw_qos_profile_parameters`,和 `SENSOR_DATA`。
@@ -506,6 +528,7 @@ ros2 run orbbec_camera list_depth_work_mode_node
 - `/camera/get_ir_exposure`
 - `/camera/get_ir_gain`
 - `/camera/get_ldp_status`
+- `/camera/get_point_cloud_roi`
 - `/camera/get_sdk_version`
 - `/camera/get_white_balance`
 - `/camera/set_auto_white_balance`
